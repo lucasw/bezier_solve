@@ -1,5 +1,5 @@
 /*
- 
+
   Copyright 2013 Lucas Walter
 
      This file is part of bezier_solve.
@@ -79,7 +79,7 @@ bool getBezier(
   bc(-4) = 1 -4  6 -4  1
   ...
 
-  { 
+  {
   bc(-3)*bc(3,0),  0     0      0
   bc(-2)*bc(3,1),        0      0
   bc(-1)*bc(3,2),               0
@@ -114,9 +114,9 @@ bool getBezier(
     control.at<double>(i, 1) = control_points[i].y;
   }
 
-  //VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << logMat(coeff);
+  // VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << logMat(coeff);
   VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << (coeff);
-  //VLOG(5) << CLTXT <<"control " << CLNRM << std::endl << logMat(control);
+  // VLOG(5) << CLTXT <<"control " << CLNRM << std::endl << logMat(control);
 
   cv::Point2f old_pt;
 
@@ -155,20 +155,19 @@ struct BezFunctor {
   BezFunctor(
       const size_t num_control_points,
       const int num_line_points,
-      const cv::Rect obstacle, 
+      const cv::Rect obstacle,
       cv::Mat& out) :
     num_control_points(num_control_points),
     num_line_points(num_line_points),
     obstacle(obstacle),
     out(out) {
-  
   }
 
   bool operator() (const double* const x, double* residual) const {
     std::vector<cv::Point2f> control_points;
     control_points.resize(num_control_points);
     for (size_t i = 0; i < num_control_points; i++) {
-      control_points[i] = cv::Point2f(x[i * 2], x[i * 2 + 1]); 
+      control_points[i] = cv::Point2f(x[i * 2], x[i * 2 + 1]);
     }
     // there are going to be a lot of redundant calls to getBezier
     // how to cache results?
@@ -198,7 +197,7 @@ struct BezFunctor {
         residual[i * 2] = 0;
         residual[i * 2 + 1] = 0;
       }
-      //if (bezier_points[i].x 
+      //if (bezier_points[i].x
     }
     return true;
   }
@@ -219,31 +218,52 @@ int main(int argc, char* argv[]) {
   static const int wd = 1280;
   static const int ht = 720;
   cv::Mat out = cv::Mat(cv::Size(wd, ht), CV_8UC3, cv::Scalar::all(0));
-  
+
   std::vector<cv::Point2f> control_points;
   control_points.resize(4);
+
+  bool run = true;
+  float o1x = FLAGS_o1x;
+  float o1y = FLAGS_o1y;
+  float o2x = FLAGS_o2x;
+  float o2y = FLAGS_o2y;
+
+  while (run) {
+    out *= 0.97;
   control_points[0] = cv::Point2f( 100, 100);
-  control_points[1] = control_points[0] + cv::Point2f(FLAGS_o1x, FLAGS_o1y); 
+  control_points[1] = control_points[0] + cv::Point2f(o1x, o1y);
   control_points[3] = cv::Point2f( wd - 100, ht - 100);
-  control_points[2] = control_points[3] + cv::Point2f(FLAGS_o2x, FLAGS_o2y); 
-  
+  control_points[2] = control_points[3] + cv::Point2f(o2x, o2y);
+
   for (size_t i = 1; i < control_points.size(); i++) {
-    cv::line(out, control_points[i-1], control_points[i], 
-        cv::Scalar(155, 255, 0), 2, CV_AA ); 
+    cv::line(out, control_points[i-1], control_points[i],
+        cv::Scalar(155, 255, 0), 2, CV_AA );
   }
 
   std::vector<cv::Point2f> bezier_points;
   // TBD gflag
   static const int num_points = 300;
   getBezier(control_points, bezier_points, num_points);
-  
+
   for (size_t i = 1; i < bezier_points.size(); i++) {
-    cv::line(out, bezier_points[i-1], bezier_points[i], 
-        cv::Scalar(255, 255, 255), 2); 
+    cv::line(out, bezier_points[i-1], bezier_points[i],
+        cv::Scalar(255, 255, 255), 2);
   }
 
   cv::imshow("bezier_solve", out);
-  cv::waitKey(0);
+  char key = cv::waitKey(0);
+
+  if (key == 'q') { run = false; }
+  if (key == 'd') { o1x += 5; }
+  if (key == 'a') { o1x -= 4; }
+  if (key == 'w') { o1y -= 5; }
+  if (key == 's') { o1y += 4; }
+
+  if (key == 'l') { o2x += 5; }
+  if (key == 'j') { o2x -= 4; }
+  if (key == 'i') { o2y -= 5; }
+  if (key == 'k') { o2y += 4; }
+  }
 
   return 0;
 }
