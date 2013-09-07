@@ -34,6 +34,10 @@
 // BOLD black text with blue background
 #define CLTX2 "\e[1;44m"
 
+DEFINE_int32(o1x, 500, "offset from starting point for control point");
+DEFINE_int32(o1y, 20, "offset from starting point for control point");
+DEFINE_int32(o2x, -500, "offset from ending point for control point");
+DEFINE_int32(o2y, 0, "offset from ending point for control point");
 
 // from vimjay
 bool getBezier(
@@ -122,12 +126,14 @@ bool getBezier(
     float t = static_cast<float>(i)/static_cast<float>(num - 1);
 
     // concentrate samples near beginning and end
+    /*
     if (t < 0.5) {
       t *= t;
     } else {
-      t = 1.0 - (1.0-t)*(1.0-t);
+      t = 1.0 - (1.0 - t) * (1.0 - t);
     }
-    double tee_raw[1][4] = {{ 1.0, t, t*t, t*t*t}};
+    */
+    double tee_raw[1][4] = {{ 1.0, t, t * t, t * t * t}};
 
     cv::Mat tee = cv::Mat(1, 4, CV_64F, tee_raw);
     cv::Mat pos = tee * coeff * control;
@@ -149,6 +155,36 @@ int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::LogToStderr();
   google::ParseCommandLineFlags(&argc, &argv, false);
+
+  // TBD gflags
+  static const int wd = 1280;
+  static const int ht = 720;
+  cv::Mat out = cv::Mat(cv::Size(wd, ht), CV_8UC3, cv::Scalar::all(0));
+  
+  std::vector<cv::Point2f> control_points;
+  control_points.resize(4);
+  control_points[0] = cv::Point2f( 100, 100);
+  control_points[1] = control_points[0] + cv::Point2f(FLAGS_o1x, FLAGS_o1y); 
+  control_points[3] = cv::Point2f( wd - 100, ht - 100);
+  control_points[2] = control_points[3] + cv::Point2f(FLAGS_o2x, FLAGS_o2y); 
+  
+  for (size_t i = 1; i < control_points.size(); i++) {
+    cv::line(out, control_points[i-1], control_points[i], 
+        cv::Scalar(155, 255, 0), 2, CV_AA ); 
+  }
+
+  std::vector<cv::Point2f> bezier_points;
+  // TBD gflag
+  static const int num_points = 300;
+  getBezier(control_points, bezier_points, num_points);
+  
+  for (size_t i = 1; i < bezier_points.size(); i++) {
+    cv::line(out, bezier_points[i-1], bezier_points[i], 
+        cv::Scalar(255, 255, 255), 2); 
+  }
+
+  cv::imshow("bezier_solve", out);
+  cv::waitKey(0);
 
   return 0;
 }
