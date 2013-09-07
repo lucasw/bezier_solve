@@ -151,6 +151,65 @@ bool getBezier(
   return true;
 }
 
+struct BezFunctor {
+  BezFunctor(
+      const size_t num_control_points,
+      const int num_line_points,
+      const cv::Rect obstacle, 
+      cv::Mat& out) :
+    num_control_points(num_control_points),
+    num_line_points(num_line_points),
+    obstacle(obstacle),
+    out(out) {
+  
+  }
+
+  bool operator() (const double* const x, double* residual) const {
+    std::vector<cv::Point2f> control_points;
+    control_points.resize(num_control_points);
+    for (size_t i = 0; i < num_control_points; i++) {
+      control_points[i] = cv::Point2f(x[i * 2], x[i * 2 + 1]); 
+    }
+    // there are going to be a lot of redundant calls to getBezier
+    // how to cache results?
+    std::vector<cv::Point2f> bezier_points;
+    getBezier(control_points, bezier_points, num_line_points);
+
+    // obstacle center
+    const float cx = obstacle.x + obstacle.width/2;
+    const float cy = obstacle.y + obstacle.height/2;
+
+    for (size_t i = 0; i < bezier_points.size(); i++) {
+      const cv::Point2f bp = bezier_points[i];
+      if (obstacle.contains(bp)) {
+        // find how close point is to nearest rectangle edge
+        if (bp.x > cx) {
+          residual[i * 2] = obstacle.x + obstacle.width - bp.x;
+        } else {
+          residual[i * 2] = bp.x - obstacle.x;
+        }
+
+        if (bp.y > cy) {
+          residual[i * 2 + 1] = obstacle.y + obstacle.height - bp.y;
+        } else {
+          residual[i * 2 + 1] = bp.y - obstacle.y;
+        }
+      } else {
+        residual[i * 2] = 0;
+        residual[i * 2 + 1] = 0;
+      }
+      //if (bezier_points[i].x 
+    }
+    return true;
+  }
+
+private:
+  const size_t num_control_points;
+  const int num_line_points;
+  const cv::Rect obstacle;
+  cv::Mat out;
+};
+
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::LogToStderr();
