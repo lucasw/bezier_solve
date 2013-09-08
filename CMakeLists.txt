@@ -34,6 +34,7 @@ ${CERES_LIBRARIES}
 ${OpenCV_LIBS}
 glog
 gflags
+pthread
 #boost_thread
 #boost_filesystem
 #boost_system
