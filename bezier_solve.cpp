@@ -20,6 +20,7 @@
 
 #include <vector>
 
+#include "ceres/ceres.h"
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -151,6 +152,20 @@ bool getBezier(
   return true;
 }
 
+void getBezier(const double* const x,
+    const int num_control_points,
+    const int num_line_points,
+    std::vector<cv::Point2f>& bezier_points) {
+  std::vector<cv::Point2f> control_points;
+  control_points.resize(num_control_points);
+  for (int i = 0; i < num_control_points; i++) {
+    control_points[i] = cv::Point2f(x[i * 2], x[i * 2 + 1]);
+  }
+  getBezier(control_points, bezier_points, num_line_points);
+
+  return;
+}
+
 struct BezFunctor {
   BezFunctor(
       const size_t num_control_points,
@@ -164,16 +179,10 @@ struct BezFunctor {
   }
 
   bool operator() (const double* const x, double* residual) const {
-    std::vector<cv::Point2f> control_points;
-    control_points.resize(num_control_points);
-    for (size_t i = 0; i < num_control_points; i++) {
-      control_points[i] = cv::Point2f(x[i * 2], x[i * 2 + 1]);
-    }
     // there are going to be a lot of redundant calls to getBezier
     // how to cache results?
     std::vector<cv::Point2f> bezier_points;
-    getBezier(control_points, bezier_points, num_line_points);
-
+    getBezier(x, num_control_points, num_line_points, bezier_points);
     // obstacle center
     const float cx = obstacle.x + obstacle.width/2;
     const float cy = obstacle.y + obstacle.height/2;
@@ -209,6 +218,41 @@ private:
   cv::Mat out;
 };
 
+struct PathDistFunctor {
+  PathDistFunctor(
+      const size_t num_control_points,
+      const int num_line_points,
+      const std::vector<cv::Rect> obstacles,
+      cv::Mat& out) :
+    num_control_points(num_control_points),
+    num_line_points(num_line_points),
+    obstacles(obstacles),
+    out(out) {
+  }
+
+  bool operator() (const double* const x, double* residual) const {
+    std::vector<cv::Point2f> bezier_points;
+    getBezier(x, num_control_points, num_line_points, bezier_points);
+    for (size_t i = 1; i < bezier_points.size(); i++) {
+      const cv::Point2f bp1 = bezier_points[i-1];
+      const cv::Point2f bp2 = bezier_points[i];
+
+      const float dx = bp2.x - bp1.x;
+      const float dy = bp2.y - bp1.y;
+      const float sc = 10.0;
+      residual[0] += dx * dx * sc;
+      residual[1] += dy * dy * sc;
+    }
+    return true;
+  }
+
+private:
+  const size_t num_control_points;
+  const int num_line_points;
+  const std::vector<cv::Rect> obstacles;
+  cv::Mat out;
+};
+
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::LogToStderr();
@@ -228,6 +272,12 @@ int main(int argc, char* argv[]) {
   float o2x = FLAGS_o2x;
   float o2y = FLAGS_o2y;
 
+  static const int num_obstacles = 3;
+  std::vector<cv::Rect> obstacles;
+  obstacles.push_back(cv::Rect(320, 250, 100, 120));
+  obstacles.push_back(cv::Rect(800, 490, 100, 110));
+  obstacles.push_back(cv::Rect(600, 320, 100, 110));
+
   while (run) {
     out *= 0.97;
   control_points[0] = cv::Point2f( 100, 100);
@@ -237,7 +287,7 @@ int main(int argc, char* argv[]) {
 
   for (size_t i = 1; i < control_points.size(); i++) {
     cv::line(out, control_points[i-1], control_points[i],
-        cv::Scalar(155, 255, 0), 2, CV_AA );
+        cv::Scalar(155, 255, 0), 2, CV_AA);
   }
 
   std::vector<cv::Point2f> bezier_points;
@@ -248,6 +298,21 @@ int main(int argc, char* argv[]) {
   for (size_t i = 1; i < bezier_points.size(); i++) {
     cv::line(out, bezier_points[i-1], bezier_points[i],
         cv::Scalar(255, 255, 255), 2);
+  }
+
+  for (size_t i = 0; i < obstacles.size(); i++) {
+    const cv::Rect ob = obstacles[i];
+    cv::rectangle(out, ob, cv::Scalar(128, 128, 100),
+        -1); //cv::CV_FILLED);
+
+    for (size_t i = 1; i < bezier_points.size(); i++) {
+      if (ob.contains(bezier_points[i])) {
+        VLOG(3) << i << " " << bezier_points[i] << " " 
+            << ob.x << " " << ob.y << " " << ob.width << " " << ob.height;
+        cv::line(out, bezier_points[i - 1], bezier_points[i],
+            cv::Scalar(0, 0, 255), 3);
+      }
+    }
   }
 
   cv::imshow("bezier_solve", out);
@@ -264,6 +329,9 @@ int main(int argc, char* argv[]) {
   if (key == 'i') { o2y -= 5; }
   if (key == 'k') { o2y += 4; }
   }
+
+  //ceres::CostFunction* cost_function = 
+     
 
   return 0;
 }
