@@ -157,18 +157,18 @@ void getBezier(
     const double* const x,
     const cv::Point2d start_point,
     const cv::Point2d end_point,
-    const int num_control_points,
+    const int num_param_points,
     const int num_line_points,
     std::vector<cv::Point2d>& bezier_points) {
   std::vector<cv::Point2d> control_points;
-  control_points.resize(num_control_points + 2);
+  control_points.resize(num_param_points + 2);
   control_points[0] = start_point;
   control_points[control_points.size() - 1] = end_point;
-  for (int i = 1; i < num_control_points - 1; i++) {
-    control_points[i] = cv::Point2d(x[i * 2], x[i * 2 + 1]);
-    LOG(INFO) << i << " " << CLVAL 
-        << control_points[i].x << " "  
-        << control_points[i].y 
+  for (int i = 0; i < num_param_points; i++) {
+    control_points[i + 1] = cv::Point2d(x[i * 2], x[i * 2 + 1]);
+    VLOG(1) << i << " " << CLVAL 
+        << control_points[i + 1].x << " "  
+        << control_points[i + 1].y 
         << CLNRM;
   }
   getBezier(control_points, bezier_points, num_line_points);
