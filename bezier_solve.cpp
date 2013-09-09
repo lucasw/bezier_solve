@@ -262,7 +262,6 @@ struct PathDistFunctor {
         num_control_points, num_line_points, bezier_points);
     VLOG(5) << CLVAL << bezier_points.size() << CLNRM;
     residual[0] = 0;
-    //residual[1] = 0;
     VLOG(1) << 0 << " " << bezier_points[0] << " " << start_point;
     for (size_t i = 1; i < bezier_points.size(); i++) {
       const cv::Point2d bp1 = bezier_points[i-1];
@@ -271,17 +270,11 @@ struct PathDistFunctor {
       const double dx = bp2.x - bp1.x;
       const double dy = bp2.y - bp1.y;
       const double sc = 1.0;
-      residual[0] += sqrtf(dx * dx + dy * dy) * sc; // abs(dy) * sc;
-      //residual[1] += fabs(dy) * sc;
+      residual[0] += sqrtf(dx * dx + dy * dy) * sc; 
       VLOG(2) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
     }
 
-    // subtract the shortest possible distance
-    //const cv::Point2d dse = start_point - end_point;
     VLOG(1) << "residual " << residual[0] << " " << residual[1];
-      // << dse;
-    //residual[0] -= fabs(dse.x);
-    //residual[1] -= fabs(dse.y);
     return true;
   }
 
@@ -321,7 +314,7 @@ int main(int argc, char* argv[]) {
   obstacles[1] = (cv::Rect(800, 490, 100, 110));
   obstacles[2] = (cv::Rect(600, 320, 100, 110));
   
-  static const int num_line_points = 8;
+  static const int num_line_points = 48;
 
   while (run) {
     out *= 0.97;
@@ -438,6 +431,8 @@ int main(int argc, char* argv[]) {
           cv::Scalar(5, 255, 55), 3);
     }
     
+    // TBD print bezier line length - have getBezier compute it?
+
     cv::imshow("bezier_solve", out);
     cv::waitKey(0);
   }
