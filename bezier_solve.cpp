@@ -139,11 +139,10 @@ bool getBezier(
 
     cv::Mat tee = cv::Mat(1, 4, CV_64F, tee_raw);
     cv::Mat pos = tee * coeff * control;
-  
 
     cv::Point2d new_pt = cv::Point2d(pos.at<double>(0, 0), pos.at<double>(0, 1));
     
-    VLOG(1) << i << " " << t << " pos " << pos << " " << new_pt.x << " " 
+    VLOG(2) << i << " " << t << " pos " << pos << " " << new_pt.x << " " 
         << new_pt.y << ", " << pos.at<double>(0, 0) << "  " 
         << pos.at<double>(0, 0) - new_pt.x;
 
@@ -263,7 +262,8 @@ struct PathDistFunctor {
         num_control_points, num_line_points, bezier_points);
     VLOG(5) << CLVAL << bezier_points.size() << CLNRM;
     residual[0] = 0;
-    residual[1] = 0;
+    //residual[1] = 0;
+    VLOG(1) << 0 << " " << bezier_points[0] << " " << start_point;
     for (size_t i = 1; i < bezier_points.size(); i++) {
       const cv::Point2d bp1 = bezier_points[i-1];
       const cv::Point2d bp2 = bezier_points[i];
@@ -271,11 +271,17 @@ struct PathDistFunctor {
       const double dx = bp2.x - bp1.x;
       const double dy = bp2.y - bp1.y;
       const double sc = 1.0;
-      residual[0] += fabs(dx) * sc; // abs(dy) * sc;
-      residual[1] += fabs(dy) * sc;
-      VLOG(1) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
+      residual[0] += sqrtf(dx * dx + dy * dy) * sc; // abs(dy) * sc;
+      //residual[1] += fabs(dy) * sc;
+      VLOG(2) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
     }
-    LOG(INFO) << "residual " << residual[0] << " " << residual[1];
+
+    // subtract the shortest possible distance
+    //const cv::Point2d dse = start_point - end_point;
+    VLOG(1) << "residual " << residual[0] << " " << residual[1];
+      // << dse;
+    //residual[0] -= fabs(dse.x);
+    //residual[1] -= fabs(dse.y);
     return true;
   }
 
@@ -386,7 +392,7 @@ int main(int argc, char* argv[]) {
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
             ceres::CENTRAL, 
-            2, // num residuals 
+            1, // num residuals 
             num_param_points * 2>( // num parameters 
                 new PathDistFunctor(
                   control_points[0],
