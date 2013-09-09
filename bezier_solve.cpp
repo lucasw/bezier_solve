@@ -35,10 +35,10 @@
 // BOLD black text with blue background
 #define CLTX2 "\e[1;44m"
 
-DEFINE_int32(o1x, 500, "offset from starting point for control point");
-DEFINE_int32(o1y, 20, "offset from starting point for control point");
-DEFINE_int32(o2x, -500, "offset from ending point for control point");
-DEFINE_int32(o2y, 0, "offset from ending point for control point");
+DEFINE_double(o1x, 500.03, "offset from starting point for control point");
+DEFINE_double(o1y, 20.1, "offset from starting point for control point");
+DEFINE_double(o2x, -500.03, "offset from ending point for control point");
+DEFINE_double(o2y, 0.004, "offset from ending point for control point");
 
 // from vimjay
 bool getBezier(
@@ -102,10 +102,10 @@ bool getBezier(
   // TBD how to generate programmatically
   // 1 3 3 1
   double coeff_raw[4][4] = {
-    { 1,  0,  0, 0},
-    {-3,  3,  0, 0},
-    { 3, -6,  3, 0},
-    {-1,  3, -3, 1}
+    { 1.0,  0.0,  0.0, 0.0},
+    {-3.0,  3.0,  0.0, 0.0},
+    { 3.0, -6.0,  3.0, 0.0},
+    {-1.0,  3.0, -3.0, 1.0}
   };
   cv::Mat coeff = cv::Mat(4, 4, CV_64F, coeff_raw);
   cv::Mat control = cv::Mat::zeros(4, 2, CV_64F);
@@ -257,7 +257,7 @@ struct PathDistFunctor {
         num_control_points, num_line_points, bezier_points);
     VLOG(5) << CLVAL << bezier_points.size() << CLNRM;
     residual[0] = 0;
-    //residual[1] = 0;
+    residual[1] = 0;
     for (size_t i = 1; i < bezier_points.size(); i++) {
       const cv::Point2d bp1 = bezier_points[i-1];
       const cv::Point2d bp2 = bezier_points[i];
@@ -265,10 +265,11 @@ struct PathDistFunctor {
       const double dx = bp2.x - bp1.x;
       const double dy = bp2.y - bp1.y;
       const double sc = 1.0;
-      residual[0] += dx * dx * sc + dy * dy * sc;
-      //residual[1] += dy * dy * sc;
+      residual[0] += fabs(dx) * sc; // abs(dy) * sc;
+      residual[1] += fabs(dy) * sc;
+      VLOG(1) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
     }
-    LOG(INFO) << residual[0];
+    LOG(INFO) << "residual " << residual[0] << " " << residual[1];
     return true;
   }
 
@@ -308,13 +309,13 @@ int main(int argc, char* argv[]) {
   obstacles[1] = (cv::Rect(800, 490, 100, 110));
   obstacles[2] = (cv::Rect(600, 320, 100, 110));
   
-  static const int num_line_points = 300;
+  static const int num_line_points = 8;
 
   while (run) {
     out *= 0.97;
-  control_points[0] = cv::Point2d( 100, 100);
+  control_points[0] = cv::Point2d( 100.001, 100.020);
   control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
-  control_points[3] = cv::Point2d( wd - 100, ht - 100);
+  control_points[3] = cv::Point2d( wd - 100.2, ht - 100.01);
   control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
 
   for (size_t i = 1; i < control_points.size(); i++) {
@@ -379,7 +380,7 @@ int main(int argc, char* argv[]) {
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
             ceres::CENTRAL, 
-            1, // 2, // num residuals 
+            2, // num residuals 
             num_param_points * 2>( // num parameters 
                 new PathDistFunctor(
                   control_points[0],
