@@ -114,7 +114,7 @@ bool getBezier(
     control.at<double>(i, 0) = control_points[i].x;
     control.at<double>(i, 1) = control_points[i].y;
   }
-  VLOG(1) << "control matrix " << std::endl << control;
+  VLOG(2) << "control matrix " << std::endl << control;
 
   // VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << logMat(coeff);
   VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << (coeff);
@@ -171,7 +171,7 @@ void getBezier(
   control_points[control_points.size() - 1] = end_point;
   for (int i = 0; i < num_param_points; i++) {
     control_points[i + 1] = cv::Point2d(x[i * 2], x[i * 2 + 1]);
-    VLOG(1) << i << " " << CLVAL 
+    VLOG(2) << i << " " << CLVAL 
         << control_points[i + 1].x << " "  
         << control_points[i + 1].y 
         << CLNRM;
@@ -206,7 +206,8 @@ struct BezFunctor {
     // obstacle center
     const double cx = obstacle.x + obstacle.width/2;
     const double cy = obstacle.y + obstacle.height/2;
-
+    
+    double total_residual = 0;
     for (size_t i = 0; i < bezier_points.size(); i++) {
       const cv::Point2d bp = bezier_points[i];
       if (obstacle.contains(bp)) {
@@ -226,8 +227,9 @@ struct BezFunctor {
         residual[i * 2] = 0;
         residual[i * 2 + 1] = 0;
       }
-      //if (bezier_points[i].x
+      total_residual += residual[i * 2] + residual[i * 2 + 1];
     }
+    VLOG(1) << total_residual;
     return true;
   }
 
@@ -269,7 +271,7 @@ struct PathDistFunctor {
 
       const double dx = bp2.x - bp1.x;
       const double dy = bp2.y - bp1.y;
-      const double sc = 1.0;
+      const double sc = 0.01;
       residual[0] += sqrtf(dx * dx + dy * dy) * sc; 
       VLOG(2) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
     }
@@ -379,8 +381,25 @@ int main(int argc, char* argv[]) {
   }
 
   for (size_t i = 0; i < obstacles.size(); i++) {
+    ceres::CostFunction* cost_function = 
+        new ceres::NumericDiffCostFunction<
+            BezFunctor, 
+            ceres::CENTRAL, 
+            num_line_points * 2,
+            num_param_points * 2>( // num parameters 
+                new BezFunctor(
+                  control_points[0],
+                  control_points[control_points.size() - 1],
+                  num_param_points,
+                  num_line_points,
+                  obstacles[i],
+                  out));
+  
+    problem.AddResidualBlock(
+        cost_function, NULL, parameters);
   }
   
+  #if 0
     ceres::CostFunction* cost_function = 
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
@@ -397,7 +416,8 @@ int main(int argc, char* argv[]) {
   
     problem.AddResidualBlock(
         cost_function, NULL, parameters);
-  
+  #endif
+
   ceres::Solver::Options options;
   options.linear_solver_type = ceres::DENSE_QR;
   options.minimizer_progress_to_stdout = true;
@@ -425,6 +445,17 @@ int main(int argc, char* argv[]) {
         num_param_points, 
         num_line_points, bezier_points);
   
+    for (size_t i = 1; i < control_points.size()-1; i++) {
+      control_points[i] = cv::Point2d(
+          parameters[(i - 1) * 2],
+          parameters[(i - 1) * 2 + 1]);
+    }
+
+    for (size_t i = 1; i < control_points.size(); i++) {
+      cv::line(out, control_points[i-1], control_points[i],
+          cv::Scalar(5, 205, 10), 2, CV_AA);
+    }
+
     for (size_t i = 1; i < bezier_points.size(); i++) {
       //LOG(INFO) << i << " " << bezier_points[i];
       cv::line(out, bezier_points[i-1], bezier_points[i],
