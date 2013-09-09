@@ -313,11 +313,11 @@ int main(int argc, char* argv[]) {
   double o2x = FLAGS_o2x;
   double o2y = FLAGS_o2y;
 
-  static const int num_obstacles = 1; // 3;
+  static const int num_obstacles = 2; // 3;
   std::vector<cv::Rect> obstacles;
   obstacles.resize(num_obstacles);
   obstacles[0] = (cv::Rect(480, 250, 100, 120));
-  // obstacles[1] = (cv::Rect(800, 490, 100, 110));
+  obstacles[1] = (cv::Rect(800, 490, 100, 110));
   // obstacles[2] = (cv::Rect(600, 320, 100, 110));
   
   static const int num_line_points = 48;
