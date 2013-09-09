@@ -43,8 +43,8 @@ DEFINE_int32(o2y, 0, "offset from ending point for control point");
 // from vimjay
 bool getBezier(
     // TBD currently has to be 4
-    const std::vector<cv::Point2f>& control_points,
-    std::vector<cv::Point2f>& output_points,
+    const std::vector<cv::Point2d>& control_points,
+    std::vector<cv::Point2d>& output_points,
     // number of intermediate points to generate
     const int num) {
   if (control_points.size() != 4) {
@@ -119,12 +119,12 @@ bool getBezier(
   VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << (coeff);
   // VLOG(5) << CLTXT <<"control " << CLNRM << std::endl << logMat(control);
 
-  cv::Point2f old_pt;
+  cv::Point2d old_pt;
 
   output_points.clear();
 
   for (int i = 0; i < num; i++) {
-    float t = static_cast<float>(i)/static_cast<float>(num - 1);
+    double t = static_cast<double>(i)/static_cast<double>(num - 1);
 
     // concentrate samples near beginning and end
     /*
@@ -139,7 +139,7 @@ bool getBezier(
     cv::Mat tee = cv::Mat(1, 4, CV_64F, tee_raw);
     cv::Mat pos = tee * coeff * control;
 
-    cv::Point new_pt = cv::Point2f(pos.at<double>(0, 0), pos.at<double>(0, 1));
+    cv::Point new_pt = cv::Point2d(pos.at<double>(0, 0), pos.at<double>(0, 1));
 
     output_points.push_back(new_pt);
 
@@ -152,14 +152,24 @@ bool getBezier(
   return true;
 }
 
-void getBezier(const double* const x,
+// version that takes the raw pointer
+void getBezier(
+    const double* const x,
+    const cv::Point2d start_point,
+    const cv::Point2d end_point,
     const int num_control_points,
     const int num_line_points,
-    std::vector<cv::Point2f>& bezier_points) {
-  std::vector<cv::Point2f> control_points;
-  control_points.resize(num_control_points);
-  for (int i = 0; i < num_control_points; i++) {
-    control_points[i] = cv::Point2f(x[i * 2], x[i * 2 + 1]);
+    std::vector<cv::Point2d>& bezier_points) {
+  std::vector<cv::Point2d> control_points;
+  control_points.resize(num_control_points + 2);
+  control_points[0] = start_point;
+  control_points[control_points.size() - 1] = end_point;
+  for (int i = 1; i < num_control_points - 1; i++) {
+    control_points[i] = cv::Point2d(x[i * 2], x[i * 2 + 1]);
+    LOG(INFO) << i << " " << CLVAL 
+        << control_points[i].x << " "  
+        << control_points[i].y 
+        << CLNRM;
   }
   getBezier(control_points, bezier_points, num_line_points);
 
@@ -168,10 +178,14 @@ void getBezier(const double* const x,
 
 struct BezFunctor {
   BezFunctor(
+      const cv::Point2d start_point,
+      const cv::Point2d end_point,
       const size_t num_control_points,
       const int num_line_points,
       const cv::Rect obstacle,
       cv::Mat& out) :
+    start_point(start_point),
+    end_point(end_point),
     num_control_points(num_control_points),
     num_line_points(num_line_points),
     obstacle(obstacle),
@@ -181,14 +195,15 @@ struct BezFunctor {
   bool operator() (const double* const x, double* residual) const {
     // there are going to be a lot of redundant calls to getBezier
     // how to cache results?
-    std::vector<cv::Point2f> bezier_points;
-    getBezier(x, num_control_points, num_line_points, bezier_points);
+    std::vector<cv::Point2d> bezier_points;
+    getBezier(x, start_point, end_point, num_control_points, 
+        num_line_points, bezier_points);
     // obstacle center
-    const float cx = obstacle.x + obstacle.width/2;
-    const float cy = obstacle.y + obstacle.height/2;
+    const double cx = obstacle.x + obstacle.width/2;
+    const double cy = obstacle.y + obstacle.height/2;
 
     for (size_t i = 0; i < bezier_points.size(); i++) {
-      const cv::Point2f bp = bezier_points[i];
+      const cv::Point2d bp = bezier_points[i];
       if (obstacle.contains(bp)) {
         // find how close point is to nearest rectangle edge
         if (bp.x > cx) {
@@ -212,6 +227,8 @@ struct BezFunctor {
   }
 
 private:
+  const cv::Point2d start_point;
+  const cv::Point2d end_point;
   const size_t num_control_points;
   const int num_line_points;
   const cv::Rect obstacle;
@@ -220,10 +237,14 @@ private:
 
 struct PathDistFunctor {
   PathDistFunctor(
+      const cv::Point2d start_point,
+      const cv::Point2d end_point,
       const size_t num_control_points,
       const int num_line_points,
       const std::vector<cv::Rect> obstacles,
       cv::Mat& out) :
+    start_point(start_point),
+    end_point(end_point),
     num_control_points(num_control_points),
     num_line_points(num_line_points),
     obstacles(obstacles),
@@ -231,25 +252,29 @@ struct PathDistFunctor {
   }
 
   bool operator() (const double* const x, double* residual) const {
-    std::vector<cv::Point2f> bezier_points;
-    getBezier(x, num_control_points, num_line_points, bezier_points);
-    LOG(INFO) << CLVAL << bezier_points.size() << CLNRM;
+    std::vector<cv::Point2d> bezier_points;
+    getBezier(x, start_point, end_point, 
+        num_control_points, num_line_points, bezier_points);
+    VLOG(5) << CLVAL << bezier_points.size() << CLNRM;
     residual[0] = 0;
-    residual[1] = 0;
+    //residual[1] = 0;
     for (size_t i = 1; i < bezier_points.size(); i++) {
-      const cv::Point2f bp1 = bezier_points[i-1];
-      const cv::Point2f bp2 = bezier_points[i];
+      const cv::Point2d bp1 = bezier_points[i-1];
+      const cv::Point2d bp2 = bezier_points[i];
 
-      const float dx = bp2.x - bp1.x;
-      const float dy = bp2.y - bp1.y;
-      const float sc = 10.0;
-      residual[0] += dx * dx * sc;
-      residual[1] += dy * dy * sc;
+      const double dx = bp2.x - bp1.x;
+      const double dy = bp2.y - bp1.y;
+      const double sc = 1.0;
+      residual[0] += dx * dx * sc + dy * dy * sc;
+      //residual[1] += dy * dy * sc;
     }
+    LOG(INFO) << residual[0];
     return true;
   }
 
 private:
+  const cv::Point2d start_point;
+  const cv::Point2d end_point;
   const size_t num_control_points;
   const int num_line_points;
   const std::vector<cv::Rect> obstacles;
@@ -267,36 +292,37 @@ int main(int argc, char* argv[]) {
   cv::Mat out = cv::Mat(cv::Size(wd, ht), CV_8UC3, cv::Scalar::all(0));
 
   const int num_control_points = 4;
-  std::vector<cv::Point2f> control_points;
+  std::vector<cv::Point2d> control_points;
   control_points.resize(num_control_points);
 
   bool run = true;
-  float o1x = FLAGS_o1x;
-  float o1y = FLAGS_o1y;
-  float o2x = FLAGS_o2x;
-  float o2y = FLAGS_o2y;
+  double o1x = FLAGS_o1x;
+  double o1y = FLAGS_o1y;
+  double o2x = FLAGS_o2x;
+  double o2y = FLAGS_o2y;
 
   static const int num_obstacles = 3;
   std::vector<cv::Rect> obstacles;
-  obstacles.push_back(cv::Rect(320, 250, 100, 120));
-  obstacles.push_back(cv::Rect(800, 490, 100, 110));
-  obstacles.push_back(cv::Rect(600, 320, 100, 110));
+  obstacles.resize(num_obstacles);
+  obstacles[0] = (cv::Rect(320, 250, 100, 120));
+  obstacles[1] = (cv::Rect(800, 490, 100, 110));
+  obstacles[2] = (cv::Rect(600, 320, 100, 110));
   
   static const int num_line_points = 300;
 
   while (run) {
     out *= 0.97;
-  control_points[0] = cv::Point2f( 100, 100);
-  control_points[1] = control_points[0] + cv::Point2f(o1x, o1y);
-  control_points[3] = cv::Point2f( wd - 100, ht - 100);
-  control_points[2] = control_points[3] + cv::Point2f(o2x, o2y);
+  control_points[0] = cv::Point2d( 100, 100);
+  control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
+  control_points[3] = cv::Point2d( wd - 100, ht - 100);
+  control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
 
   for (size_t i = 1; i < control_points.size(); i++) {
     cv::line(out, control_points[i-1], control_points[i],
         cv::Scalar(155, 255, 0), 2, CV_AA);
   }
 
-  std::vector<cv::Point2f> bezier_points;
+  std::vector<cv::Point2d> bezier_points;
   // TBD gflag
   getBezier(control_points, bezier_points, num_line_points);
 
@@ -336,11 +362,14 @@ int main(int argc, char* argv[]) {
   }
 
   ceres::Problem problem;
-  double parameters[num_control_points * 2];
+  // subtract the two end points, those are fixed
+  const int num_param_points = num_control_points - 2;
+  double parameters[num_param_points * 2];
 
-  for (size_t i = 0; i < num_control_points; i++) {
-    parameters[i * 2] = control_points[i].x; 
-    parameters[i * 2 + 1] = control_points[i].y; 
+
+  for (int i = 0; i < num_param_points; i++) {
+    parameters[i * 2] = control_points[i + 1].x; 
+    parameters[i * 2 + 1] = control_points[i + 1].y; 
   }
 
   for (size_t i = 0; i < obstacles.size(); i++) {
@@ -350,10 +379,12 @@ int main(int argc, char* argv[]) {
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
             ceres::CENTRAL, 
-            2, // num residuals 
-            num_control_points * 2>( // num parameters 
+            1, // 2, // num residuals 
+            num_param_points * 2>( // num parameters 
                 new PathDistFunctor(
-                  num_control_points,
+                  control_points[0],
+                  control_points[control_points.size()-1],
+                  num_param_points,
                   num_line_points,
                   obstacles,
                   out));
@@ -365,22 +396,27 @@ int main(int argc, char* argv[]) {
   options.linear_solver_type = ceres::DENSE_QR;
   options.minimizer_progress_to_stdout = true;
   ceres::Solver::Summary summary;
+  LOG(INFO) << "starting solve";
   ceres::Solve(options, &problem, &summary);
 
   LOG(INFO) << summary.BriefReport() << "\n";
-
-  for (size_t i = 1; i < num_control_points; i++) {
-    LOG(INFO) << control_points[i];
+  
+  LOG(INFO) << "control points";
+  for (int i = 0; i < num_control_points; i++) {
+    LOG(INFO) << i << " " << control_points[i];
   }
-  for (size_t i = 1; i < num_control_points; i++) {
-    LOG(INFO) << i << " " << parameters[i * 2] << " " << 
+  for (int i = 0; i < num_param_points; i++) {
+    LOG(INFO) << i + 1 << " " << parameters[i * 2] << " " << 
         parameters[i * 2 + 1];
   }
 
   // visualize output
   {
-    std::vector<cv::Point2f> bezier_points;
-    getBezier(parameters, num_control_points, 
+    std::vector<cv::Point2d> bezier_points;
+    getBezier(parameters, 
+        control_points[0], 
+        control_points[control_points.size() - 1], 
+        num_param_points, 
         num_line_points, bezier_points);
   
     for (size_t i = 1; i < bezier_points.size(); i++) {
