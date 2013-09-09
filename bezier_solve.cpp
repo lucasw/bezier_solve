@@ -212,17 +212,21 @@ struct BezFunctor {
       const cv::Point2d bp = bezier_points[i];
       if (obstacle.contains(bp)) {
         // find how close point is to nearest rectangle edge
+        double dx = 0;
         if (bp.x > cx) {
-          residual[i * 2] = obstacle.x + obstacle.width - bp.x;
+          dx = obstacle.x + obstacle.width - bp.x;
         } else {
-          residual[i * 2] = bp.x - obstacle.x;
+          dx = bp.x - obstacle.x;
         }
+        residual[i * 2] = dx * dx;
 
+        double dy = 0;
         if (bp.y > cy) {
-          residual[i * 2 + 1] = obstacle.y + obstacle.height - bp.y;
+          dy = obstacle.y + obstacle.height - bp.y;
         } else {
-          residual[i * 2 + 1] = bp.y - obstacle.y;
+          dy = bp.y - obstacle.y;
         }
+        residual[i * 2 + 1] = dy * dy;
       } else {
         residual[i * 2] = 0;
         residual[i * 2 + 1] = 0;
@@ -309,17 +313,17 @@ int main(int argc, char* argv[]) {
   double o2x = FLAGS_o2x;
   double o2y = FLAGS_o2y;
 
-  static const int num_obstacles = 3;
+  static const int num_obstacles = 1; // 3;
   std::vector<cv::Rect> obstacles;
   obstacles.resize(num_obstacles);
-  obstacles[0] = (cv::Rect(320, 250, 100, 120));
-  obstacles[1] = (cv::Rect(800, 490, 100, 110));
-  obstacles[2] = (cv::Rect(600, 320, 100, 110));
+  obstacles[0] = (cv::Rect(480, 250, 100, 120));
+  // obstacles[1] = (cv::Rect(800, 490, 100, 110));
+  // obstacles[2] = (cv::Rect(600, 320, 100, 110));
   
   static const int num_line_points = 48;
 
   while (run) {
-    out *= 0.97;
+    out *= 0.92;
   control_points[0] = cv::Point2d( 100.001, 100.020);
   control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
   control_points[3] = cv::Point2d( wd - 100.2, ht - 100.01);
@@ -327,7 +331,7 @@ int main(int argc, char* argv[]) {
 
   for (size_t i = 1; i < control_points.size(); i++) {
     cv::line(out, control_points[i-1], control_points[i],
-        cv::Scalar(155, 255, 0), 2, CV_AA);
+        cv::Scalar(155, 165, 90), 1, CV_AA);
   }
 
   std::vector<cv::Point2d> bezier_points;
@@ -336,7 +340,7 @@ int main(int argc, char* argv[]) {
 
   for (size_t i = 1; i < bezier_points.size(); i++) {
     cv::line(out, bezier_points[i-1], bezier_points[i],
-        cv::Scalar(255, 255, 255), 2);
+        cv::Scalar(255, 255, 255), 1);
   }
 
   for (size_t i = 0; i < obstacles.size(); i++) {
@@ -399,7 +403,7 @@ int main(int argc, char* argv[]) {
         cost_function, NULL, parameters);
   }
   
-  #if 0
+  #if 1
     ceres::CostFunction* cost_function = 
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
@@ -453,7 +457,7 @@ int main(int argc, char* argv[]) {
 
     for (size_t i = 1; i < control_points.size(); i++) {
       cv::line(out, control_points[i-1], control_points[i],
-          cv::Scalar(5, 205, 10), 2, CV_AA);
+          cv::Scalar(5, 135, 10), 1, CV_AA);
     }
 
     for (size_t i = 1; i < bezier_points.size(); i++) {
