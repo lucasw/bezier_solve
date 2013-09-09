@@ -114,6 +114,7 @@ bool getBezier(
     control.at<double>(i, 0) = control_points[i].x;
     control.at<double>(i, 1) = control_points[i].y;
   }
+  VLOG(1) << "control matrix " << std::endl << control;
 
   // VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << logMat(coeff);
   VLOG(5) << CLTXT << "coeff " << CLNRM << std::endl << (coeff);
@@ -138,8 +139,13 @@ bool getBezier(
 
     cv::Mat tee = cv::Mat(1, 4, CV_64F, tee_raw);
     cv::Mat pos = tee * coeff * control;
+  
 
-    cv::Point new_pt = cv::Point2d(pos.at<double>(0, 0), pos.at<double>(0, 1));
+    cv::Point2d new_pt = cv::Point2d(pos.at<double>(0, 0), pos.at<double>(0, 1));
+    
+    VLOG(1) << i << " " << t << " pos " << pos << " " << new_pt.x << " " 
+        << new_pt.y << ", " << pos.at<double>(0, 0) << "  " 
+        << pos.at<double>(0, 0) - new_pt.x;
 
     output_points.push_back(new_pt);
 
