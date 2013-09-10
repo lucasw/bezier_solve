@@ -18,6 +18,7 @@
     along with Vimjay.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sstream>
 #include <vector>
 
 #include "ceres/ceres.h"
@@ -205,8 +206,9 @@ void getBezier(
     const cv::Point2d end_point,
     const int num_param_points,
     const int num_line_points,
-    std::vector<cv::Point2d>& bezier_points) {
-  std::vector<cv::Point2d> control_points;
+    std::vector<cv::Point2d>& bezier_points,
+    std::vector<cv::Point2d>& control_points
+    ) {
   control_points.resize(num_param_points + 2);
   control_points[0] = start_point;
   control_points[control_points.size() - 1] = end_point;
@@ -242,8 +244,9 @@ struct BezFunctor {
     // there are going to be a lot of redundant calls to getBezier
     // how to cache results?
     std::vector<cv::Point2d> bezier_points;
+    std::vector<cv::Point2d> control_points;
     getBezier(x, start_point, end_point, num_control_points, 
-        num_line_points, bezier_points);
+        num_line_points, bezier_points, control_points);
     // obstacle center
     const double cx = obstacle.x + obstacle.width/2;
     const double cy = obstacle.y + obstacle.height/2;
@@ -305,8 +308,10 @@ struct PathDistFunctor {
 
   bool operator() (const double* const x, double* residual) const {
     std::vector<cv::Point2d> bezier_points;
+    std::vector<cv::Point2d> control_points;
     getBezier(x, start_point, end_point, 
-        num_control_points, num_line_points, bezier_points);
+        num_control_points, num_line_points, bezier_points,
+        control_points);
     VLOG(5) << CLVAL << bezier_points.size() << CLNRM;
     residual[0] = 0;
     residual[1] = 0;
@@ -337,6 +342,14 @@ struct PathDistFunctor {
       }
       #endif
     }
+   
+    #if 0
+    drawBezier(out,
+        control_points, cv::Scalar(5, 45, 10),
+        bezier_points,  cv::Scalar(5, 128, 35),
+        obstacles);
+    cv::waitKey(1);
+    #endif
 
     VLOG(1) << "residual " << residual[0] << " " << residual[1];
     return true;
@@ -364,8 +377,8 @@ int main(int argc, char* argv[]) {
   const int num_control_points = 4;
   std::vector<cv::Point2d> control_points;
   control_points.resize(num_control_points);
-  control_points[0] = cv::Point2d( 100.001, 100.020);
-  control_points[3] = cv::Point2d( wd - 100.2, ht - 100.01);
+  control_points[0] = cv::Point2d( 150.001, 150.020);
+  control_points[3] = cv::Point2d( wd - 150.2, ht - 150.01);
 
   double o1x = FLAGS_o1x;
   double o1y = FLAGS_o1y;
@@ -378,6 +391,7 @@ int main(int argc, char* argv[]) {
   
   cv::RNG rng;
   static const int num_line_points = 150; //FLAGS_line_points;
+  int i = 0;
 
   bool run = true;
   while (run) {
@@ -385,8 +399,8 @@ int main(int argc, char* argv[]) {
     
     for (int i = 0; i < num_obstacles; i++) {
       do {
-        int width = rng.uniform(20, ht/4);
-        int height = rng.uniform(20, ht/4);
+        int width  = rng.uniform(20, ht/3);
+        int height = rng.uniform(20, ht/3);
         obstacles[i] = cv::Rect(
             rng.uniform(0, wd - width),
             rng.uniform(0, ht - height),
@@ -409,9 +423,15 @@ int main(int argc, char* argv[]) {
         bezier_points,  cv::Scalar(235, 235, 235),
         obstacles);
 
-  
-    cv::imshow("bezier_solve", out);
-  
+    {
+      std::stringstream file_name;
+      file_name << "bezier_solve_" << (i + 1000000) << ".jpg";
+      cv::imwrite(file_name.str(), out);
+      i++;
+    }
+
+    //cv::imshow("bezier_solve", out);
+    //cv::waitKey(10);  
   #if 0
   if (key == 'q') { run = false; }
   if (key == 'd') { o1x += 5; }
@@ -495,17 +515,12 @@ int main(int argc, char* argv[]) {
   // visualize output
   {
     std::vector<cv::Point2d> bezier_points;
+    std::vector<cv::Point2d> control_points_tmp;
     getBezier(parameters, 
         control_points[0], 
         control_points[control_points.size() - 1], 
         num_param_points, 
-        num_line_points, bezier_points);
-    
-    for (size_t i = 1; i < control_points.size()-1; i++) {
-      control_points[i] = cv::Point2d(
-          parameters[(i - 1) * 2],
-          parameters[(i - 1) * 2 + 1]);
-    }
+        num_line_points, bezier_points, control_points);
 
     drawBezier(out,
         control_points, cv::Scalar(5, 85, 10),
@@ -513,10 +528,16 @@ int main(int argc, char* argv[]) {
         obstacles);
     
     // TBD print bezier line length - have getBezier compute it?
-
+    
+    {
+      std::stringstream file_name;
+      file_name << "bezier_solve_" << (i + 1000000) << ".jpg";
+      cv::imwrite(file_name.str(), out);
+      i++;
+    }
     cv::imshow("bezier_solve", out);
   }
-    char key = cv::waitKey(0);
+    char key = cv::waitKey(1);
   
     if (key == 'q') run = false;
   } // end of run loop
