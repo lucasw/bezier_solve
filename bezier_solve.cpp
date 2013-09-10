@@ -40,6 +40,46 @@ DEFINE_double(o1y, 20.1, "offset from starting point for control point");
 DEFINE_double(o2x, -500.03, "offset from ending point for control point");
 DEFINE_double(o2y, 0.004, "offset from ending point for control point");
 
+void drawBezier(cv::Mat& out, 
+    const std::vector<cv::Point2d>& control_points, 
+    const cv::Scalar cp_col,
+    const std::vector<cv::Point2d>& bezier_points, 
+    const cv::Scalar bz_col,
+    const std::vector<cv::Rect>& obstacles) {
+  for (size_t i = 1; i < control_points.size(); i++) {
+    cv::line(out, control_points[i-1], control_points[i],
+        cp_col, 2, CV_AA);
+  }
+  for (size_t i = 0; i < control_points.size(); i++) {
+    cv::circle(out, control_points[i], 4, cp_col, -1);
+  }
+
+  for (size_t i = 1; i < bezier_points.size(); i++) {
+    //LOG(INFO) << i << " " << bezier_points[i];
+    cv::line(out, bezier_points[i-1], bezier_points[i],
+        bz_col, 2);
+  }
+  for (size_t i = 0; i < bezier_points.size(); i++) {
+    cv::circle(out, bezier_points[i], 4, bz_col, -1);
+  }
+
+  for (size_t i = 0; i < obstacles.size(); i++) {
+    const cv::Rect ob = obstacles[i];
+    cv::rectangle(out, ob, cv::Scalar(128, 128, 100),
+        2); //cv::CV_FILLED);
+
+    for (size_t i = 1; i < bezier_points.size(); i++) {
+      if (ob.contains(bezier_points[i])) {
+        VLOG(3) << i << " " << bezier_points[i] << " " 
+            << ob.x << " " << ob.y << " " << ob.width << " " << ob.height;
+        cv::line(out, bezier_points[i - 1], bezier_points[i],
+            bz_col/4.0 + cv::Scalar(0, 0, 255), 3);
+      }
+    }
+  }
+
+}
+
 // from vimjay
 bool getBezier(
     // TBD currently has to be 4
@@ -329,35 +369,16 @@ int main(int argc, char* argv[]) {
   control_points[3] = cv::Point2d( wd - 100.2, ht - 100.01);
   control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
 
-  for (size_t i = 1; i < control_points.size(); i++) {
-    cv::line(out, control_points[i-1], control_points[i],
-        cv::Scalar(155, 165, 90), 1, CV_AA);
-  }
-
   std::vector<cv::Point2d> bezier_points;
   // TBD gflag
   getBezier(control_points, bezier_points, num_line_points);
 
-  for (size_t i = 1; i < bezier_points.size(); i++) {
-    cv::line(out, bezier_points[i-1], bezier_points[i],
-        cv::Scalar(255, 255, 255), 1);
-  }
+  drawBezier(out, 
+      control_points, cv::Scalar(155, 165, 90),
+      bezier_points,  cv::Scalar(255, 255, 255),
+      obstacles);
 
-  for (size_t i = 0; i < obstacles.size(); i++) {
-    const cv::Rect ob = obstacles[i];
-    cv::rectangle(out, ob, cv::Scalar(128, 128, 100),
-        -1); //cv::CV_FILLED);
-
-    for (size_t i = 1; i < bezier_points.size(); i++) {
-      if (ob.contains(bezier_points[i])) {
-        VLOG(3) << i << " " << bezier_points[i] << " " 
-            << ob.x << " " << ob.y << " " << ob.width << " " << ob.height;
-        cv::line(out, bezier_points[i - 1], bezier_points[i],
-            cv::Scalar(0, 0, 255), 3);
-      }
-    }
-  }
-
+  
   cv::imshow("bezier_solve", out);
   char key = cv::waitKey(0);
 
@@ -448,23 +469,17 @@ int main(int argc, char* argv[]) {
         control_points[control_points.size() - 1], 
         num_param_points, 
         num_line_points, bezier_points);
-  
+    
     for (size_t i = 1; i < control_points.size()-1; i++) {
       control_points[i] = cv::Point2d(
           parameters[(i - 1) * 2],
           parameters[(i - 1) * 2 + 1]);
     }
 
-    for (size_t i = 1; i < control_points.size(); i++) {
-      cv::line(out, control_points[i-1], control_points[i],
-          cv::Scalar(5, 135, 10), 1, CV_AA);
-    }
-
-    for (size_t i = 1; i < bezier_points.size(); i++) {
-      //LOG(INFO) << i << " " << bezier_points[i];
-      cv::line(out, bezier_points[i-1], bezier_points[i],
-          cv::Scalar(5, 255, 55), 3);
-    }
+    drawBezier(out,
+        control_points, cv::Scalar(5, 135, 10),
+        bezier_points,  cv::Scalar(5, 255, 55),
+        obstacles);
     
     // TBD print bezier line length - have getBezier compute it?
 
