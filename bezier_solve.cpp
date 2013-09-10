@@ -309,16 +309,33 @@ struct PathDistFunctor {
         num_control_points, num_line_points, bezier_points);
     VLOG(5) << CLVAL << bezier_points.size() << CLNRM;
     residual[0] = 0;
+    residual[1] = 0;
     VLOG(1) << 0 << " " << bezier_points[0] << " " << start_point;
     for (size_t i = 1; i < bezier_points.size(); i++) {
       const cv::Point2d bp1 = bezier_points[i-1];
       const cv::Point2d bp2 = bezier_points[i];
 
-      const double dx = bp2.x - bp1.x;
-      const double dy = bp2.y - bp1.y;
-      const double sc = 0.01;
-      residual[0] += sqrtf(dx * dx + dy * dy) * sc; 
-      VLOG(2) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
+      {
+        const double dx = bp2.x - bp1.x;
+        const double dy = bp2.y - bp1.y;
+        const double sc = 0.1;
+        residual[0] += sqrt(dx * dx + dy * dy) * sc; 
+        VLOG(2) << i << " " << dx << " " << dy << ", " << bp2.x << " " << bp2.y;
+      }
+      
+      #if 0
+      // penalize proximity to obstacles even if there isn't an intersection
+      for (size_t i = 0; i < obstacles.size(); i++) {
+        const cv::Point2d oc = cv::Point2d(
+            obstacles[i].x + obstacles[i].width/2,
+            obstacles[i].y + obstacles[i].height/2);
+        const double dx = bp1.x - oc.x; 
+        const double dy = bp1.y - oc.y;
+        double dist = sqrt(dx * dx + dy * dy); 
+        if (dist < 1) dist = 1;
+        residual[1] += 10.0 * 1.0/dist;
+      }
+      #endif
     }
 
     VLOG(1) << "residual " << residual[0] << " " << residual[1];
@@ -355,44 +372,47 @@ int main(int argc, char* argv[]) {
   double o2x = FLAGS_o2x;
   double o2y = FLAGS_o2y;
 
-  static const int num_obstacles = 3; // 3;
+  static const int num_obstacles = 5; // 3;
   std::vector<cv::Rect> obstacles;
   obstacles.resize(num_obstacles);
-  cv::RNG rng;
-  for (int i = 0; i < num_obstacles; i++) {
-    do {
-    int width = rng.uniform(20, ht/4);
-    int height = rng.uniform(20, ht/4);
-    obstacles[i] = cv::Rect(
-        rng.uniform(0, wd - width),
-        rng.uniform(0, ht - height),
-        width,
-        height);
-    } while (
-        (obstacles[i].contains(control_points[0])) || 
-        (obstacles[i].contains(control_points[control_points.size()-1]))); 
-  }
   
+  cv::RNG rng;
   static const int num_line_points = 150; //FLAGS_line_points;
 
   bool run = true;
   while (run) {
-    out *= 0.92;
+    out *= 0; //92;
+    
+    for (int i = 0; i < num_obstacles; i++) {
+      do {
+        int width = rng.uniform(20, ht/4);
+        int height = rng.uniform(20, ht/4);
+        obstacles[i] = cv::Rect(
+            rng.uniform(0, wd - width),
+            rng.uniform(0, ht - height),
+            width,
+            height);
+      } while (
+          (obstacles[i].contains(control_points[0])) || 
+          (obstacles[i].contains(control_points[control_points.size()-1]))); 
+    }
+
+
     control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
     control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
     std::vector<cv::Point2d> bezier_points;
     // TBD gflag
     getBezier(control_points, bezier_points, num_line_points);
 
-  drawBezier(out, 
-      control_points, cv::Scalar(155, 165, 90),
-      bezier_points,  cv::Scalar(255, 255, 255),
-      obstacles);
+    drawBezier(out, 
+        control_points, cv::Scalar(125, 70, 60),
+        bezier_points,  cv::Scalar(235, 235, 235),
+        obstacles);
 
   
-  cv::imshow("bezier_solve", out);
-  char key = cv::waitKey(0);
-
+    cv::imshow("bezier_solve", out);
+  
+  #if 0
   if (key == 'q') { run = false; }
   if (key == 'd') { o1x += 5; }
   if (key == 'a') { o1x -= 4; }
@@ -403,7 +423,7 @@ int main(int argc, char* argv[]) {
   if (key == 'j') { o2x -= 4; }
   if (key == 'i') { o2y -= 5; }
   if (key == 'k') { o2y += 4; }
-  }
+  #endif
 
   ceres::Problem problem;
   // subtract the two end points, those are fixed
@@ -440,7 +460,7 @@ int main(int argc, char* argv[]) {
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
             ceres::CENTRAL, 
-            1, // num residuals 
+            2, // num residuals 
             num_param_points * 2>( // num parameters 
                 new PathDistFunctor(
                   control_points[0],
@@ -488,15 +508,17 @@ int main(int argc, char* argv[]) {
     }
 
     drawBezier(out,
-        control_points, cv::Scalar(5, 135, 10),
+        control_points, cv::Scalar(5, 85, 10),
         bezier_points,  cv::Scalar(5, 255, 55),
         obstacles);
     
     // TBD print bezier line length - have getBezier compute it?
 
     cv::imshow("bezier_solve", out);
-    cv::waitKey(0);
   }
-
+    char key = cv::waitKey(0);
+  
+    if (key == 'q') run = false;
+  } // end of run loop
   return 0;
 }
