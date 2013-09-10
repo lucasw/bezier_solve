@@ -35,6 +35,7 @@
 // BOLD black text with blue background
 #define CLTX2 "\e[1;44m"
 
+//DEFINE_int32(line_points, 100, "number of points to break bezier line into");
 DEFINE_double(o1x, 500.03, "offset from starting point for control point");
 DEFINE_double(o1y, 20.1, "offset from starting point for control point");
 DEFINE_double(o2x, -500.03, "offset from ending point for control point");
@@ -346,32 +347,42 @@ int main(int argc, char* argv[]) {
   const int num_control_points = 4;
   std::vector<cv::Point2d> control_points;
   control_points.resize(num_control_points);
+  control_points[0] = cv::Point2d( 100.001, 100.020);
+  control_points[3] = cv::Point2d( wd - 100.2, ht - 100.01);
 
-  bool run = true;
   double o1x = FLAGS_o1x;
   double o1y = FLAGS_o1y;
   double o2x = FLAGS_o2x;
   double o2y = FLAGS_o2y;
 
-  static const int num_obstacles = 2; // 3;
+  static const int num_obstacles = 3; // 3;
   std::vector<cv::Rect> obstacles;
   obstacles.resize(num_obstacles);
-  obstacles[0] = (cv::Rect(480, 250, 100, 120));
-  obstacles[1] = (cv::Rect(800, 490, 100, 110));
-  // obstacles[2] = (cv::Rect(600, 320, 100, 110));
+  cv::RNG rng;
+  for (int i = 0; i < num_obstacles; i++) {
+    do {
+    int width = rng.uniform(20, ht/4);
+    int height = rng.uniform(20, ht/4);
+    obstacles[i] = cv::Rect(
+        rng.uniform(0, wd - width),
+        rng.uniform(0, ht - height),
+        width,
+        height);
+    } while (
+        (obstacles[i].contains(control_points[0])) || 
+        (obstacles[i].contains(control_points[control_points.size()-1]))); 
+  }
   
-  static const int num_line_points = 48;
+  static const int num_line_points = 150; //FLAGS_line_points;
 
+  bool run = true;
   while (run) {
     out *= 0.92;
-  control_points[0] = cv::Point2d( 100.001, 100.020);
-  control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
-  control_points[3] = cv::Point2d( wd - 100.2, ht - 100.01);
-  control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
-
-  std::vector<cv::Point2d> bezier_points;
-  // TBD gflag
-  getBezier(control_points, bezier_points, num_line_points);
+    control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
+    control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
+    std::vector<cv::Point2d> bezier_points;
+    // TBD gflag
+    getBezier(control_points, bezier_points, num_line_points);
 
   drawBezier(out, 
       control_points, cv::Scalar(155, 165, 90),
