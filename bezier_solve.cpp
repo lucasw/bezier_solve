@@ -26,6 +26,7 @@
 #include <glog/logging.h>
 
 #include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
 
 // bash color codes
 #define CLNRM "\e[0m"
@@ -46,8 +47,7 @@ void drawBezier(cv::Mat& out,
     const std::vector<cv::Point2d>& control_points, 
     const cv::Scalar cp_col,
     const std::vector<cv::Point2d>& bezier_points, 
-    const cv::Scalar bz_col,
-    const std::vector<cv::Rect>& obstacles) {
+    const cv::Scalar bz_col) {
   for (size_t i = 1; i < control_points.size(); i++) {
     cv::line(out, control_points[i-1], control_points[i],
         cp_col, 2, CV_AA);
@@ -65,6 +65,7 @@ void drawBezier(cv::Mat& out,
     cv::circle(out, bezier_points[i], 4, bz_col, -1);
   }
 
+  #if 0
   for (size_t i = 0; i < obstacles.size(); i++) {
     const cv::Rect ob = obstacles[i];
     cv::rectangle(out, ob, cv::Scalar(128, 128, 100),
@@ -79,10 +80,12 @@ void drawBezier(cv::Mat& out,
       }
     }
   }
+  #endif
 
 }
 
 // from vimjay
+// TBD add tstart tfinish so the whole line needn't be drawn
 bool getBezier(
     // TBD currently has to be 4
     const std::vector<cv::Point2d>& control_points,
@@ -230,13 +233,13 @@ struct BezFunctor {
       const cv::Point2d end_point,
       const size_t num_control_points,
       const int num_line_points,
-      const cv::Rect obstacle,
+      const cv::Mat obstacle_map,
       cv::Mat& out) :
     start_point(start_point),
     end_point(end_point),
     num_control_points(num_control_points),
     num_line_points(num_line_points),
-    obstacle(obstacle),
+    obstacle_map(obstacle_map),
     out(out) {
   }
 
@@ -248,35 +251,14 @@ struct BezFunctor {
     getBezier(x, start_point, end_point, num_control_points, 
         num_line_points, bezier_points, control_points);
     // obstacle center
-    const double cx = obstacle.x + obstacle.width/2;
-    const double cy = obstacle.y + obstacle.height/2;
     
+    cv::Mat tmp = obstacle_map.clone();
     double total_residual = 0;
-    for (size_t i = 0; i < bezier_points.size(); i++) {
-      const cv::Point2d bp = bezier_points[i];
-      if (obstacle.contains(bp)) {
-        // find how close point is to nearest rectangle edge
-        double dx = 0;
-        if (bp.x > cx) {
-          dx = obstacle.x + obstacle.width - bp.x;
-        } else {
-          dx = bp.x - obstacle.x;
-        }
-        residual[i * 2] = dx * dx;
+   
+    drawBezier(tmp, 
+        control_points, cv::Scalar(0, 0, 0),
+        bezier_points,  cv::Scalar(255, 255, 255));
 
-        double dy = 0;
-        if (bp.y > cy) {
-          dy = obstacle.y + obstacle.height - bp.y;
-        } else {
-          dy = bp.y - obstacle.y;
-        }
-        residual[i * 2 + 1] = dy * dy;
-      } else {
-        residual[i * 2] = 0;
-        residual[i * 2 + 1] = 0;
-      }
-      total_residual += residual[i * 2] + residual[i * 2 + 1];
-    }
     VLOG(1) << total_residual;
     return true;
   }
@@ -286,7 +268,7 @@ private:
   const cv::Point2d end_point;
   const size_t num_control_points;
   const int num_line_points;
-  const cv::Rect obstacle;
+  const cv::Mat obstacle_map;
   cv::Mat out;
 };
 
@@ -385,7 +367,7 @@ int main(int argc, char* argv[]) {
   double o2x = FLAGS_o2x;
   double o2y = FLAGS_o2y;
 
-  static const int num_obstacles = 5; // 3;
+  static const int num_obstacles = 15; // 3;
   std::vector<cv::Rect> obstacles;
   obstacles.resize(num_obstacles);
   
@@ -411,6 +393,20 @@ int main(int argc, char* argv[]) {
           (obstacles[i].contains(control_points[control_points.size()-1]))); 
     }
 
+    cv::Mat obstacle_map = cv::Mat(cv::Size(wd, ht), CV_8UC1, 
+        cv::Scalar::all(0));
+    for (size_t i = 0; i < obstacles.size(); i++) {
+      const cv::Rect ob = obstacles[i];
+      cv::rectangle(obstacle_map, ob, cv::Scalar(255),
+          CV_FILLED);
+    }
+    cv::Mat cost_map;
+    //cv::Mat cost_map_32;
+    // can be 5 or CV_DIST_MASK_PRECISE
+    const int mask_size = 3; 
+    cv::distanceTransform(obstacle_map, cost_map, CV_DIST_L2, mask_size);
+    //cv::normalize(cost_map_32, cost_map_32, 0, 255, cv::NORM_MINMAX);
+    //cost_map_32.convertTo(cost_map, CV_8UC1, 0, 1);
 
     control_points[1] = control_points[0] + cv::Point2d(o1x, o1y);
     control_points[2] = control_points[3] + cv::Point2d(o2x, o2y);
@@ -420,19 +416,33 @@ int main(int argc, char* argv[]) {
 
     drawBezier(out, 
         control_points, cv::Scalar(125, 70, 60),
-        bezier_points,  cv::Scalar(235, 235, 235),
-        obstacles);
+        bezier_points,  cv::Scalar(235, 235, 235));
 
-    {
+    cv::Mat bezier_mask = cost_map.clone();
+    bezier_mask = cv::Scalar::all(0);
+    for (size_t i = 1; i < bezier_points.size(); i++) {
+      cv::line(bezier_mask, bezier_points[i-1], bezier_points[i],
+        cv::Scalar(1.0), 3, CV_AA);
+    }
+    cv::Mat mult_mask = bezier_mask.mul(cost_map);
+    LOG(INFO) << "mean " 
+      << cv::mean(mult_mask)[0] << " "
+      << cv::mean(bezier_mask)[0] << " "
+      << cv::mean(cost_map)[0] << " ";
+
+    if (0) {
       std::stringstream file_name;
       file_name << "bezier_solve_" << (i + 1000000) << ".jpg";
       cv::imwrite(file_name.str(), out);
       i++;
     }
-
+    
     //cv::imshow("bezier_solve", out);
-    //cv::waitKey(10);  
-  #if 0
+    cv::imshow("mult_mask", mult_mask/255.0);
+    //cv::imshow("bezier_mask", bezier_mask);
+    cv::imshow("cost_map", cost_map/255.0);
+    const char key = cv::waitKey(0);  
+  #if 1
   if (key == 'q') { run = false; }
   if (key == 'd') { o1x += 5; }
   if (key == 'a') { o1x -= 4; }
@@ -445,6 +455,7 @@ int main(int argc, char* argv[]) {
   if (key == 'k') { o2y += 4; }
   #endif
 
+  #if 0
   ceres::Problem problem;
   // subtract the two end points, those are fixed
   const int num_param_points = num_control_points - 2;
@@ -475,7 +486,6 @@ int main(int argc, char* argv[]) {
         cost_function, NULL, parameters);
   }
   
-  #if 1
     ceres::CostFunction* cost_function = 
         new ceres::NumericDiffCostFunction<
             PathDistFunctor, 
@@ -492,7 +502,6 @@ int main(int argc, char* argv[]) {
   
     problem.AddResidualBlock(
         cost_function, NULL, parameters);
-  #endif
 
   ceres::Solver::Options options;
   options.linear_solver_type = ceres::DENSE_QR;
@@ -540,6 +549,7 @@ int main(int argc, char* argv[]) {
     char key = cv::waitKey(1);
   
     if (key == 'q') run = false;
+    #endif
   } // end of run loop
   return 0;
 }
